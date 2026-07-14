@@ -31,6 +31,10 @@
 
 ## Notes
 
-- Ambos puntos pendientes fueron resueltos con el usuario: las multas
-  entran a la ganancia distribuible (FR-006) y no se aceptan pagos
-  parciales de la deuda acumulada (FR-009). Checklist completo.
+- Ambos puntos pendientes originales fueron resueltos con el usuario: las
+  multas entran a la ganancia distribuible (FR-006) y no se aceptan pagos
+  parciales de la deuda acumulada (FR-009).
+- Sesión de clarificación 2026-07-14 (`/speckit-clarify`): 3 preguntas
+  adicionales resueltas — rechazo de pago duplicado (FR-010), rechazo de
+  aportes contra periodo cerrado (FR-011), y rechazo de sobrepagos
+  (FR-009 ampliado). Checklist completo, sin regresiones.

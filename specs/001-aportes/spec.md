@@ -10,6 +10,14 @@
 
 **Depends on**: Registro de socios, Apertura de periodo anual
 
+## Clarifications
+
+### Session 2026-07-14
+
+- Q: Si el Administrador intenta registrar un aporte mensual para un socio/mes/periodo que ya figura como "pagado", ¿qué debe hacer el sistema? → A: Rechazar el registro duplicado — el sistema no permite más de un AporteMensual por socio+periodo+mes.
+- Q: ¿Debe el sistema rechazar explícitamente el registro de cualquier aporte (inicial o mensual) contra un periodo que ya está cerrado? → A: Sí, rechazar siempre — ningún aporte puede registrarse, editarse ni eliminarse en un periodo con estado "cerrado" (Regla XIV).
+- Q: Si un socio en mora paga un monto mayor al total de su deuda acumulada exacta, ¿qué debe hacer el sistema con el excedente? → A: Rechazar el monto exacto distinto — el pago debe coincidir exactamente con la deuda calculada; no se generan saldos a favor.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Registrar aporte inicial (Priority: P1)
@@ -115,6 +123,9 @@ por cada mes vencido.
 - El monto del aporte mensual o de la multa cambia a mitad de periodo: el
   cambio solo aplica hacia adelante; los meses ya vencidos mantienen el
   monto vigente en el momento en que vencieron.
+- Un socio en mora paga un monto distinto (mayor o menor) al total exacto de
+  su deuda acumulada: el sistema rechaza el pago en ambos casos y no genera
+  saldos a favor ni deja deuda parcialmente cubierta.
 
 ## Requirements *(mandatory)*
 
@@ -135,14 +146,22 @@ por cada mes vencido.
   contabilizarse como parte de la ganancia distribuible al cierre del
   periodo, sujeta a la distribución proporcional al capital (Regla XIII de
   la constitución).
-- **FR-009**: El sistema MUST rechazar cualquier pago de un socio en mora
-  que no cubra el 100% de su deuda acumulada (meses vencidos + multas +
-  aporte del mes actual); no se aceptan pagos parciales.
 - **FR-007**: El sistema MUST determinar el primer mes obligatorio de aporte
   de un socio a partir de su mes de ingreso al periodo, no desde enero.
 - **FR-008**: El sistema MUST preservar, para cada mes ya vencido, el monto
   de aporte y de multa vigentes en el momento en que ese mes venció, aun si
   los parámetros del periodo cambian posteriormente.
+- **FR-009**: El sistema MUST exigir que el pago de un socio en mora
+  coincida exactamente con el 100% de su deuda acumulada (meses vencidos +
+  multas + aporte del mes actual); MUST rechazar tanto pagos parciales
+  (monto menor) como sobrepagos (monto mayor) sin generar saldos a favor.
+- **FR-010**: El sistema MUST rechazar el registro de un aporte mensual para
+  una combinación socio+periodo+mes que ya tiene estado "pagado"; no puede
+  existir más de un `AporteMensual` para la misma combinación.
+- **FR-011**: El sistema MUST rechazar el registro, edición o eliminación de
+  cualquier aporte (inicial o mensual) asociado a un periodo con estado
+  "cerrado" (Regla XIV de la constitución: un periodo cerrado es
+  inmutable).
 
 ### Key Entities
 
@@ -151,7 +170,8 @@ por cada mes vencido.
 - **AporteMensual**: aporte obligatorio de un socio correspondiente a un mes
   específico de un periodo. Atributos: socio, periodo, mes, monto esperado
   (histórico al momento del vencimiento), fecha de pago, estado
-  (pendiente/pagado).
+  (pendiente/pagado). La combinación socio+periodo+mes es única: no puede
+  existir más de un registro para la misma combinación.
 - **MultaMora**: penalidad generada por un aporte mensual pagado fuera de
   plazo. Atributos: aporte mensual asociado, monto, mes en que se generó.
 - **ParametroPeriodo**: configuración vigente de un periodo. Atributos:
