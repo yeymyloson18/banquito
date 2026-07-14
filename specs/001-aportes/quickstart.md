@@ -63,5 +63,8 @@ unitarias descritas en `data-model.md`/`research.md` §5.
 
 Cada escenario anterior corresponde 1:1 a un Acceptance Scenario de `spec.md`
 (US1–US3) y a los criterios SC-001–SC-004. Las pruebas automatizadas
-equivalentes viven en `src/test/java/com/mibanquito/unit/MorosidadServiceTest.java`
-y `AporteControllerIT.java` (ver `plan.md` → Project Structure).
+equivalentes viven en
+`src/test/java/com/mibanquito/aportes/service/AporteServiceTest.java` (escrita
+**antes** que el controlador, Principio III) y
+`src/test/java/com/mibanquito/aportes/controller/AporteControllerIT.java` (ver
+`plan.md` → Project Structure).

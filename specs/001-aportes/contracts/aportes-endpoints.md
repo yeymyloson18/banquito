@@ -38,8 +38,9 @@ Registra el pago del aporte mensual (US2, US3, FR-002, FR-004, FR-009, FR-010).
 - **Rol requerido**: ADMINISTRADOR
 - **Body (form)**: `mes: YearMonth`, `montoPagado: BigDecimal`, `fecha: LocalDate`
 - **200 / redirect**: mes(es) marcados como `PAGADO`, multas asociadas saldadas
-- **Rechazo (FR-009)**: `montoPagado != deudaAcumulada` (ni más ni menos) → error
-  "el monto debe coincidir exactamente con S/ {deudaAcumulada}"
+- **Rechazo (FR-009)**: `montoPagado != deudaAcumulada` (ni más ni menos) →
+  `AporteService` lanza `PagoParcialNoPermitidoException`, traducida por el
+  controlador a "el monto debe coincidir exactamente con S/ {deudaAcumulada}"
 - **Rechazo (FR-010)**: ya existe `AporteMensual` en estado `PAGADO` para ese
   socio+periodo+mes → error "este mes ya fue registrado como pagado"
 - **Rechazo (FR-011)**: `periodo.estado == CERRADO` → error "periodo cerrado, no

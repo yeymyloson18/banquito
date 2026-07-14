@@ -1,97 +1,118 @@
 # Research: Aportes
 
-**Phase 0 output** — todas las decisiones técnicas del stack ya estaban fijadas
-por el usuario y la constitución (Java 21, Spring Boot 3, MySQL 8, Thymeleaf +
-Bootstrap 5, JUnit 5 + Mockito, Maven), por lo que no quedan marcadores `NEEDS
-CLARIFICATION` en el Technical Context. Este documento resuelve las decisiones de
-diseño específicas del dominio (Aportes) necesarias antes de modelar datos.
+**Phase 0 output** — el stack completo (Java 21, Spring Boot 3, MySQL 8 + Flyway,
+Thymeleaf + Bootstrap 5, JUnit 5 + Mockito) y la convención de paquetes
+(`com.mibanquito.aportes.{entity,repository,service,dto,controller}`) ya están
+fijados por `.specify/memory/constitution.md` y `docs/arquitectura-general.md`. No
+quedan marcadores `NEEDS CLARIFICATION` en el Technical Context. Este documento
+resuelve las decisiones de diseño específicas del dominio Aportes.
 
 ## 1. Representación de dinero (Peruvian soles)
 
-**Decision**: Todos los campos monetarios usan `BigDecimal` con `scale = 2` y
-`RoundingMode.HALF_UP`, mapeados en JPA como `@Column(precision = 10, scale = 2)`.
+**Decision**: Todo campo monetario usa `BigDecimal` con `scale = 2` y
+`RoundingMode.HALF_UP`, mapeado en JPA como `@Column(precision = 10, scale = 2)`.
 
-**Rationale**: El Principio VIII de la constitución prohíbe `float`/`double` para
-cualquier monto, tasa o saldo. `BigDecimal` con escala fija evita errores de
-redondeo binario y permite comparaciones exactas (`compareTo`), imprescindible
-para FR-009 (el pago debe coincidir exactamente con la deuda calculada, ni más ni
-menos).
+**Rationale**: Principio VIII prohíbe `float`/`double`. `BigDecimal` con escala
+fija permite comparación exacta (`compareTo`), imprescindible para que
+`registrarAporteMensual` rechace cualquier monto que no coincida exactamente con
+la deuda calculada.
 
-**Alternatives considered**: `long` en centavos — descartado porque complica la
-legibilidad en las plantillas Thymeleaf y no aporta ventaja sobre `BigDecimal`
-con escala fija para los volúmenes de este sistema (decenas de socios).
+**Alternatives considered**: enteros en centavos — descartado, sin ventaja para
+el volumen de este sistema y peor legibilidad en las vistas Thymeleaf.
 
-## 2. Modelado de entidades con historial de parámetros por periodo (ParametroPeriodo)
+## 2. Historial inmutable de `montoEsperado` y `MultaMora.monto` (FR-008)
 
-**Decision**: `ParametroPeriodo` es una tabla de historial (no un valor único por
-periodo): cada fila tiene `periodoId`, `montoAporteMensual`, `montoMulta` y
-`vigenteDesde`. El "monto vigente" para un mes dado es el de la fila con
-`vigenteDesde` más reciente que sea `<=` la fecha de vencimiento de ese mes.
+**Decision**: `ParametroPeriodo` es una tabla de historial (`periodo_id`,
+`monto_aporte_mensual`, `monto_multa`, `vigente_desde`). Cuando `AporteService`
+genera o resuelve un `AporteMensual` para un mes M, congela el
+`ParametroPeriodo` vigente en ese momento en `AporteMensual.montoEsperado` y,
+si corresponde, en `MultaMora.monto`. Estos valores **no se recalculan** aunque
+`ParametroPeriodo` cambie después — instrucción explícita confirmada por el
+usuario y ya requerida por FR-008.
 
-**Rationale**: El edge case del spec ("cambio del monto del aporte o la multa a
-mitad de periodo → solo aplica hacia adelante; los meses ya vencidos mantienen el
-monto vigente cuando vencieron", FR-008) exige que el sistema pueda reconstruir
-qué monto regía en cualquier mes pasado. Un único valor mutable por periodo
-perdería ese historial en cuanto se actualice.
+**Rationale**: Es la única forma de que `calcularDeudaAcumulada` reproduzca
+exactamente S/105 (Ene+Feb a S/50 + 1 multa S/5) y S/160 (Ene+Feb+Mar a S/50 +
+2 multas S/5) sin importar si el parámetro del periodo cambió entre medio.
 
-**Alternatives considered**: Copiar el monto vigente directamente en
-`AporteMensual.montoEsperado` al momento de generarse el mes (snapshot) —
-complementario, no alternativo: se adopta también esto (ver dato en
-`data-model.md`) como la fuente de verdad ya congelada para ese mes, y
-`ParametroPeriodo` queda como historial de configuración para generar nuevos
-meses correctamente.
+**Alternatives considered**: recalcular con el parámetro vigente al momento del
+pago — rechazado explícitamente por el usuario y contradice FR-008 y el edge
+case del spec ("los meses ya vencidos mantienen el monto vigente cuando
+vencieron").
 
-## 3. Validación de pago exacto (FR-009) y rechazo de duplicados (FR-010)
+## 3. `registrarAporteMensual` y rechazo de pago parcial (`PagoParcialNoPermitidoException`)
 
-**Decision**: La validación de "pago exacto" y "no duplicado" se implementa en la
-capa de servicio (`AporteMensualService`, `MorosidadService`), no solo como
-constraint de base de datos. La unicidad socio+periodo+mes sí se refuerza además
-con un índice único a nivel de esquema (`UNIQUE (socio_id, periodo_id, mes)` en
-Flyway) como segunda barrera.
+**Decision**: `AporteService.registrarAporteMensual` calcula primero
+`calcularDeudaAcumulada(socio, periodo, mesActual)`. Si el socio tiene algún mes
+`PENDIENTE` anterior al mes actual (está en mora) y el monto recibido no
+coincide **exactamente** con la deuda acumulada total, lanza
+`PagoParcialNoPermitidoException` (unchecked, `RuntimeException`) antes de
+persistir nada. Si el monto coincide exactamente, marca todos los
+`AporteMensual` cubiertos como `PAGADO` y las `MultaMora` asociadas como
+saldadas, en una única transacción (`@Transactional`).
 
-**Rationale**: Principio XI-adjacent — las reglas de negocio críticas deben ser
-una barrera dura en el código, no solo una validación de UI. Un índice único a
-nivel de BD previene condiciones de carrera (dos registros concurrentes para el
-mismo mes) que una validación solo en servicio no cubriría de forma atómica.
+**Rationale**: FR-009 exige rechazar tanto pagos parciales como sobrepagos; una
+excepción de dominio explícita (en vez de un booleano o `Optional`) permite que
+`AporteController` la traduzca a un mensaje de error claro sin que el Service
+conozca detalles de HTTP/vistas (separación de capas de
+`docs/arquitectura-general.md`).
 
-**Alternatives considered**: Solo validar en servicio sin constraint de BD —
-descartado por riesgo de condición de carrera con dos administradores
-registrando el mismo pago casi simultáneamente.
+**Alternatives considered**: devolver un resultado (`Either`/`ResultDTO`) en vez
+de lanzar excepción — descartado por consistencia con el resto del monolito,
+donde las reglas de negocio duras (Principio XI, "barrera dura... nunca solo una
+advertencia") se expresan como excepciones que abortan la transacción.
 
 ## 4. Rechazo de operaciones sobre periodo cerrado (FR-011)
 
-**Decision**: Un `@Aspect` o filtro de servicio común (`PeriodoGuard`) valida el
-estado del periodo antes de cualquier operación de escritura sobre `Aporte*`,
-lanzando una excepción de negocio (`PeriodoCerradoException`) capturada por un
-`@ControllerAdvice` que la traduce a un mensaje de error en la vista Thymeleaf.
+**Decision**: `AporteService` valida `periodo.getEstado() == CERRADO` al inicio
+de `registrarAporteInicial` y `registrarAporteMensual`, lanzando una excepción
+de dominio (`PeriodoCerradoException`) antes de cualquier escritura.
 
-**Rationale**: Principio XIV (periodo cerrado inmutable) es transversal a varios
-módulos (no solo Aportes); centralizar la validación evita duplicar la
-comprobación en cada servicio y facilita que otros módulos (Préstamos, Cierre
-anual) reutilicen el mismo guard cuando se implementen.
+**Rationale**: Principio XIV es transversal a varios módulos futuros
+(Préstamos, Cierre anual); centralizar la comprobación en el Service (no en el
+Controller ni en la vista) asegura que se cumpla sin importar el punto de
+entrada.
 
-**Alternatives considered**: Duplicar el `if (periodo.isCerrado())` en cada
-método de servicio — descartado por violar DRY y por el riesgo de que un futuro
-módulo olvide la comprobación.
+**Alternatives considered**: constraint a nivel de base de datos (trigger) —
+descartado por complejidad adicional no justificada (Principio IV,
+simplicidad); la validación en Service es suficiente dado que todas las
+escrituras pasan por `AporteService`.
 
-## 5. Testing de lógica financiera (Principio III, TDD)
+## 5. Unicidad socio+periodo+mes (FR-010)
 
-**Decision**: `MorosidadServiceTest` implementa primero los dos casos exactos del
-spec (S/105 con 1 mes vencido, S/160 con 2 meses vencidos) como pruebas JUnit 5
-que fallan contra un `MorosidadService` vacío, antes de escribir la
-implementación. Mockito se usa para simular `AporteMensualRepository` y
-`ParametroPeriodoRepository` sin necesidad de base de datos real en pruebas
-unitarias.
+**Decision**: índice único `UNIQUE (socio_id, periodo_id, mes)` en la migración
+Flyway de `aporte_mensual`, además de la comprobación en `AporteService` antes
+de insertar.
 
-**Rationale**: Exigencia directa del Principio III y del FR de trazabilidad
-(Principio V): estas pruebas son la verificación ejecutable de SC-001 y SC-002.
+**Rationale**: doble barrera — el Service da el mensaje de error de negocio
+claro, el índice de BD previene condiciones de carrera si dos administradores
+registran el mismo pago casi simultáneamente.
 
-**Alternatives considered**: Prueba de integración con Testcontainers/MySQL real
-— se deja fuera de este plan por no haber sido solicitada por el usuario en el
-stack de testing (constitución la marca como opcional); puede añadirse después
-sin cambiar el diseño del servicio.
+**Alternatives considered**: solo validación en Service — descartado por riesgo
+de condición de carrera sin barrera atómica en BD.
+
+## 6. Testing test-first de `AporteService` (Principio III)
+
+**Decision**: `AporteServiceTest` (JUnit 5 + Mockito, mocks de
+`AporteMensualRepository` y `ParametroPeriodoRepository`) se escribe primero,
+con al menos estos casos, y debe fallar contra un `AporteService` vacío antes
+de implementarlo:
+1. 1 mes vencido (enero) pagado en febrero → deuda total exacta S/105.
+2. 2 meses vencidos (enero y febrero) pagados en marzo → deuda total exacta
+   S/160.
+3. Pago que no coincide exactamente con la deuda (mayor o menor) estando en
+   mora → lanza `PagoParcialNoPermitidoException`.
+
+Solo después de que estas pruebas pasen se escribe `AporteController`.
+
+**Rationale**: exigencia directa del usuario y del Principio III; estas pruebas
+son la verificación ejecutable de SC-001 y SC-002.
+
+**Alternatives considered**: prueba de integración con Testcontainers/MySQL
+real — fuera de este plan (no solicitada; constitución la marca opcional).
 
 ## Resumen de resolución de NEEDS CLARIFICATION
 
-Ninguno — el Technical Context no contenía marcadores pendientes. Las 5
-decisiones anteriores son de diseño de dominio, no de selección de stack.
+Ninguno — el Technical Context no contenía marcadores pendientes. Las 6
+decisiones anteriores son de diseño de dominio y de la capa Service, no de
+selección de stack ni de estructura de paquetes (ya fijada por
+`docs/arquitectura-general.md`).
