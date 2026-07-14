@@ -131,7 +131,7 @@ src/main/java/com/mibanquito/aportes/
 ├── dto/
 │   ├── AporteInicialRequest.java
 │   ├── AporteMensualRequest.java
-│   └── DeudaAcumuladaResponse.java
+│   └── DeudaAcumuladaDTO.java           # ver tasks.md Fase 7, nombre alineado con /speckit.tasks
 └── controller/
     └── AporteController.java           # se implementa DESPUÉS de que AporteServiceTest pase
 
@@ -141,10 +141,12 @@ src/main/resources/
 │   ├── aporte-mensual-form.html
 │   └── deuda-socio.html
 └── db/migration/
-    ├── V1__crear_parametro_periodo.sql
-    ├── V2__crear_aporte_inicial.sql
-    ├── V3__crear_aporte_mensual.sql
-    └── V4__crear_multa_mora.sql
+    ├── V1__crear_periodo_anual_stub.sql   # stub mínimo, ver tasks.md T003
+    ├── V2__crear_socio_stub.sql           # stub mínimo, ver tasks.md T004
+    ├── V3__crear_parametro_periodo.sql
+    ├── V4__crear_aporte_inicial.sql
+    ├── V5__crear_aporte_mensual.sql
+    └── V6__crear_multa_mora.sql
 
 src/test/java/com/mibanquito/aportes/
 ├── service/
