@@ -116,7 +116,7 @@ por cada mes vencido.
 - Un socio se pone al día pagando varios meses vencidos + multas en una sola
   transacción: el sistema debe registrar cada aporte mensual y su multa
   correspondiente de forma individual y trazable, aunque el pago se reciba
-  como un solo monto.
+  como un solo monto (ver FR-012, `mesHasta`).
 - Un socio ingresa a mitad de año: su primer mes obligatorio es el mes de
   ingreso, no enero; no se generan aportes ni morosidad para meses previos a
   su ingreso.
@@ -142,10 +142,14 @@ por cada mes vencido.
   al monto vigente de cada mes + multas correspondientes).
 - **FR-005**: El sistema MUST registrar cada pago con fecha, monto y detalle
   del concepto (aporte de qué mes, o multa de qué mes).
-- **FR-006**: Las multas de mora MUST sumarse a la caja del banco y MUST
-  contabilizarse como parte de la ganancia distribuible al cierre del
-  periodo, sujeta a la distribución proporcional al capital (Regla XIII de
-  la constitución).
+- **FR-006**: Cada multa de mora MUST quedar persistida como un movimiento
+  trazable y sumable (monto, socio, periodo, mes), expuesto mediante una
+  consulta agregada por periodo, de modo que el módulo Caja pueda sumarla a
+  la caja del banco y el módulo Cierre anual pueda incluirla en la ganancia
+  distribuible al cierre, sujeta a la distribución proporcional al capital
+  (Regla XIII de la constitución). La actualización real del saldo de caja
+  y la distribución en sí son responsabilidad de esos módulos (fuera de
+  alcance de Aportes; ver `Out of Scope`).
 - **FR-007**: El sistema MUST determinar el primer mes obligatorio de aporte
   de un socio a partir de su mes de ingreso al periodo, no desde enero.
 - **FR-008**: El sistema MUST preservar, para cada mes ya vencido, el monto
@@ -162,11 +166,29 @@ por cada mes vencido.
   cualquier aporte (inicial o mensual) asociado a un periodo con estado
   "cerrado" (Regla XIV de la constitución: un periodo cerrado es
   inmutable).
+- **FR-012**: Al registrar un aporte mensual, el Administrador MUST indicar
+  el mes hasta el cual está pagando (`mesHasta`); el sistema MUST resolver
+  y saldar en una sola operación todos los `AporteMensual` en estado
+  `PENDIENTE` con mes `<= mesHasta` (incluyendo el mes actual, generándolo
+  de forma perezosa si aún no existe — ver FR-008), exigiendo que el monto
+  pagado coincida exactamente con la suma de esos meses más sus multas
+  (FR-004, FR-009).
+- **FR-013**: El sistema MUST determinar el mes de ingreso de un socio a un
+  periodo a partir de la fecha de su `AporteInicial` en ese periodo (US1);
+  ningún `AporteMensual` MUST generarse para un mes anterior a ese mes de
+  ingreso (FR-007).
+- **FR-014**: Todas las operaciones de este módulo (registrar aporte
+  inicial, registrar aporte mensual, consultar deuda) MUST estar
+  restringidas al rol ADMINISTRADOR (Principio IX de la constitución); el
+  rol SOCIO no tiene acceso de escritura ni de consulta directa en este
+  módulo.
 
 ### Key Entities
 
 - **AporteInicial**: aporte de capital único registrado al ingreso de un
-  socio a un periodo. Atributos: socio, periodo, monto, fecha.
+  socio a un periodo. Atributos: socio, periodo, monto, fecha. Su `fecha`
+  determina el mes de ingreso del socio al periodo (FR-013): ningún
+  `AporteMensual` se genera para un mes anterior a este.
 - **AporteMensual**: aporte obligatorio de un socio correspondiente a un mes
   específico de un periodo. Atributos: socio, periodo, mes, monto esperado
   (histórico al momento del vencimiento), fecha de pago, estado
@@ -191,6 +213,9 @@ por cada mes vencido.
 - **SC-004**: El Administrador puede consultar la deuda acumulada de
   cualquier socio en cualquier momento sin necesidad de cálculos manuales
   externos al sistema.
+- **SC-005**: Ningún usuario con rol SOCIO puede registrar, modificar ni
+  consultar directamente aportes de este módulo; toda operación exige rol
+  ADMINISTRADOR (FR-014).
 
 ## Assumptions
 
@@ -207,3 +232,9 @@ por cada mes vencido.
 - Solicitud y aprobación de préstamos.
 - Cierre anual y distribución de utilidades.
 - Selección o registro del medio de pago (efectivo, transferencia, etc.).
+- Actualización real del saldo de caja del banco y la distribución de
+  utilidades al cierre (módulos Caja y Cierre anual); Aportes solo persiste
+  y expone el dato agregado de multas por periodo (FR-006).
+- Consulta de estado de cuenta por el propio Socio (módulo "Estado de
+  cuenta del socio"); en este módulo, toda consulta es realizada por el
+  Administrador (FR-014).

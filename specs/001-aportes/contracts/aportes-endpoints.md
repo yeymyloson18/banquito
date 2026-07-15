@@ -3,7 +3,12 @@
 La aplicación es un monolito server-rendered (Thymeleaf), no una API JSON pública.
 El "contrato" aquí documentado son las rutas HTTP que expone `AporteController`,
 sus parámetros de entrada y el comportamiento observable (vista devuelta o error),
-todos restringidos al rol `ADMINISTRADOR` (Principio IX).
+todos restringidos al rol `ADMINISTRADOR` (Principio IX, FR-014).
+
+**Aplicación de la restricción de rol**: cada método del controlador se anota
+con `@PreAuthorize("hasRole('ADMINISTRADOR')")`. Un usuario con rol `SOCIO`
+recibe 403/redirect en las 5 rutas siguientes — verificado por
+`AporteControllerIT` (ver `tasks.md` Fase 8).
 
 ## GET /socios/{socioId}/periodos/{periodoId}/aporte-inicial
 
@@ -33,18 +38,27 @@ acumulada actual del socio si aplica (FR-004).
 
 ## POST /socios/{socioId}/periodos/{periodoId}/aporte-mensual
 
-Registra el pago del aporte mensual (US2, US3, FR-002, FR-004, FR-009, FR-010).
+Registra el pago del aporte mensual, liquidando en una sola operación todos
+los meses vencidos hasta `mesHasta` inclusive (US2, US3, FR-002, FR-004,
+FR-009, FR-010, FR-012).
 
 - **Rol requerido**: ADMINISTRADOR
-- **Body (form)**: `mes: YearMonth`, `montoPagado: BigDecimal`, `fecha: LocalDate`
-- **200 / redirect**: mes(es) marcados como `PAGADO`, multas asociadas saldadas
+- **Body (form)**: `mesHasta: YearMonth` (mes hasta el cual se está pagando,
+  no un mes puntual — ver FR-012), `montoPagado: BigDecimal`, `fecha: LocalDate`
+- **200 / redirect**: todos los `AporteMensual` `PENDIENTE` con mes `<= mesHasta`
+  quedan `PAGADO`, sus multas asociadas quedan saldadas implícitamente
 - **Rechazo (FR-009)**: `montoPagado != deudaAcumulada` (ni más ni menos) →
   `AporteService` lanza `PagoParcialNoPermitidoException`, traducida por el
   controlador a "el monto debe coincidir exactamente con S/ {deudaAcumulada}"
-- **Rechazo (FR-010)**: ya existe `AporteMensual` en estado `PAGADO` para ese
-  socio+periodo+mes → error "este mes ya fue registrado como pagado"
+- **Rechazo (FR-010)**: ya existe `AporteMensual` en estado `PAGADO` para
+  `mesHasta` (o algún mes dentro del rango) → `AporteService` lanza
+  `AporteMensualYaPagadoException`, traducida a "este mes ya fue registrado
+  como pagado"
 - **Rechazo (FR-011)**: `periodo.estado == CERRADO` → error "periodo cerrado, no
   se admiten aportes"
+- **Rechazo (FR-007/FR-013)**: `mesHasta` anterior al mes de ingreso del socio
+  (`AporteInicial.fecha`) → no hay deuda que generar; el sistema no crea
+  `AporteMensual` para meses previos al ingreso
 
 ## GET /socios/{socioId}/periodos/{periodoId}/deuda
 

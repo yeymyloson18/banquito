@@ -62,6 +62,11 @@ Historial de configuración vigente de aporte mensual y multa por periodo (ver
 Flyway — no puede existir más de un `AporteMensual` para la misma combinación
 (FR-010).
 
+**Piso de generación (FR-007, FR-013)**: el mes de ingreso del socio a un
+periodo se deriva de `AporteInicial.fecha` (no es un campo propio ni de
+`Socio` ni de `AporteMensual`). Ningún `AporteMensual` se genera para un mes
+anterior a `YearMonth.from(AporteInicial.fecha)` de ese socio+periodo.
+
 **Transición de estado**:
 ```
 PENDIENTE --(AporteService.registrarAporteMensual, pago exacto)--> PAGADO
@@ -91,13 +96,31 @@ PAGADO    --(nuevo intento de registro)--> rechazado (FR-010, no es una transici
 multa por cada `AporteMensual` en estado `PENDIENTE` cuyo mes ya venció (FR-004,
 FR-006, Principio XVI).
 
+## Generación perezosa de `AporteMensual` (FR-008, FR-012, FR-013)
+
+No existe un job/batch separado que cree los `AporteMensual` de cada mes. En
+su lugar, tanto `calcularDeudaAcumulada` como `registrarAporteMensual`
+comparten una operación interna `resolverMesesHasta(socio, periodo, mesHasta)`
+que, para cada mes entre `max(mesIngreso, último mes ya generado)` y
+`mesHasta` (inclusive):
+
+1. Si ya existe un `AporteMensual` para ese mes, lo reutiliza.
+2. Si no existe, lo crea en estado `PENDIENTE`, resolviendo el
+   `ParametroPeriodo` vigente a la fecha de vencimiento de ese mes y
+   congelando el resultado en `montoEsperado` (histórico e inmutable,
+   FR-008). Nunca se genera un mes anterior a `mesIngreso` (FR-007, FR-013).
+3. Si el mes recién generado ya está vencido respecto al mes actual del
+   sistema, genera también su `MultaMora` asociada, con el `montoMulta`
+   vigente en ese mismo momento.
+
 ## Cálculo derivado: `AporteService.calcularDeudaAcumulada` (FR-004)
 
 No es una entidad persistida, sino un valor calculado por el Service:
 
 ```
-calcularDeudaAcumulada(socio, periodo, mesActual) =
-    Σ montoEsperado de cada AporteMensual PENDIENTE con mes <= mesActual
+calcularDeudaAcumulada(socio, periodo, mesHasta) =
+    resolverMesesHasta(socio, periodo, mesHasta)
+  + Σ montoEsperado de cada AporteMensual PENDIENTE con mes <= mesHasta
   + Σ monto de cada MultaMora asociada a esos AporteMensual PENDIENTE
 ```
 
@@ -107,6 +130,58 @@ Verificado exactamente por dos casos de `AporteServiceTest`:
 - 2 meses vencidos (enero y febrero, pagados en marzo) → **S/160** = S/50 × 3
   (ene+feb+mar) + 2 multas S/5.
 
+## Pago consolidado multi-mes: `AporteService.registrarAporteMensual` (FR-012)
+
+Firma: `registrarAporteMensual(socioId, periodoId, mesHasta, montoPagado, fecha)`.
+
+`mesHasta` significa "el socio está pagando hasta este mes inclusive", no
+"solo este mes puntual". El Service:
+
+1. Ejecuta `resolverMesesHasta(socio, periodo, mesHasta)` (genera lo que
+   falte).
+2. Rechaza si `periodo.estado == CERRADO` (`PeriodoCerradoException`, FR-011).
+3. Rechaza si el `AporteMensual` de `mesHasta` ya está `PAGADO`
+   (`AporteMensualYaPagadoException` o excepción equivalente, FR-010).
+4. Calcula `calcularDeudaAcumulada(socio, periodo, mesHasta)` y exige que
+   `montoPagado` coincida exactamente (ni más ni menos, FR-009); si no,
+   lanza `PagoParcialNoPermitidoException`.
+5. Si coincide, marca **todos** los `AporteMensual` con mes `<= mesHasta` en
+   estado `PENDIENTE` como `PAGADO` (con `fechaPago = fecha`) en una única
+   transacción `@Transactional`. Sus `MultaMora` asociadas quedan saldadas
+   implícitamente: `calcularDeudaAcumulada` solo suma multas de
+   `AporteMensual` en estado `PENDIENTE`, así que una vez `PAGADO` dejan de
+   contar sin necesidad de un campo `saldada` adicional.
+
+Este mecanismo es el que hace verificables exactamente los casos S/105 y
+S/160 también a través de `registrarAporteMensual` (no solo a través de
+`calcularDeudaAcumulada` de forma aislada).
+
+## Integración con el módulo Caja (FR-006)
+
+Este feature **no** implementa el módulo Caja (constitución §5, módulo 6).
+Expone:
+
+- `MultaMoraRepository` con un método de agregación por periodo (p. ej.
+  `sumMontoByPeriodoId(periodoId): BigDecimal`).
+- `AporteService.obtenerTotalMultasPeriodo(periodoId): BigDecimal`, que
+  envuelve esa consulta para que otros módulos la consuman a través de la
+  capa Service (no directamente del Repository), conforme a
+  `docs/arquitectura-general.md`.
+
+La actualización real del saldo de caja y su inclusión en la ganancia
+distribuible al cierre (Principio XIII) son responsabilidad de los módulos
+Caja y Cierre anual, que consumirán este dato — Aportes solo garantiza que
+cada multa queda persistida y sumable.
+
+## Seguridad (FR-014)
+
+`AporteController` restringe sus 3 rutas (aporte inicial, aporte mensual,
+consulta de deuda) al rol `ADMINISTRADOR` mediante
+`@PreAuthorize("hasRole('ADMINISTRADOR')")` a nivel de método, conforme a
+`docs/arquitectura-general.md` §Seguridad. Se asume que la configuración base
+de Spring Security (`@EnableMethodSecurity`, autenticación, roles) la provee
+el módulo Autenticación (fuera de alcance de este feature).
+
 ## Excepciones de dominio (`com.mibanquito.aportes.service`)
 
 - **`PagoParcialNoPermitidoException`** (`RuntimeException`): lanzada por
@@ -115,6 +190,10 @@ Verificado exactamente por dos casos de `AporteServiceTest`:
 - **`PeriodoCerradoException`** (`RuntimeException`): lanzada por
   `registrarAporteInicial` y `registrarAporteMensual` cuando
   `periodo.estado == CERRADO` (FR-011, Principio XIV).
+- **`AporteMensualYaPagadoException`** (`RuntimeException`): lanzada por
+  `registrarAporteMensual` cuando el `AporteMensual` de `mesHasta` (o
+  cualquier mes dentro del rango a saldar) ya está en estado `PAGADO`
+  (FR-010).
 
 ## Relaciones
 

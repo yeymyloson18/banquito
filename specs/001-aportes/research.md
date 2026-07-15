@@ -110,9 +110,107 @@ son la verificación ejecutable de SC-001 y SC-002.
 **Alternatives considered**: prueba de integración con Testcontainers/MySQL
 real — fuera de este plan (no solicitada; constitución la marca opcional).
 
+## 7. Generación perezosa de `AporteMensual` (resuelve U2 de `/speckit.analyze`)
+
+**Decision**: No hay un job/batch mensual. `calcularDeudaAcumulada` y
+`registrarAporteMensual` comparten una operación interna
+`resolverMesesHasta(socio, periodo, mesHasta)` que genera bajo demanda los
+`AporteMensual` `PENDIENTE` faltantes entre el mes de ingreso del socio y
+`mesHasta`, congelando `montoEsperado` desde `ParametroPeriodo` vigente en
+ese momento (ver `data-model.md`).
+
+**Rationale**: Simplicidad (Principio IV) — evita introducir un scheduler o
+job separado para un sistema de bajo volumen (decenas de socios); el mismo
+resultado se logra resolviendo perezosamente en el único punto de entrada
+donde se necesita (consulta de deuda o registro de pago).
+
+**Alternatives considered**: job `@Scheduled` mensual que genera todos los
+`AporteMensual` del periodo por adelantado — descartado por añadir
+infraestructura (scheduler, posible tabla de control de ejecución) no
+justificada para el volumen de este sistema.
+
+## 8. Pago consolidado multi-mes: firma de `registrarAporteMensual` (resuelve U1 CRITICAL)
+
+**Decision**: `registrarAporteMensual(socioId, periodoId, mesHasta, montoPagado, fecha)`.
+`mesHasta` se interpreta como "pagar hasta este mes inclusive": el método
+salda en una sola transacción todos los `AporteMensual` `PENDIENTE` con mes
+`<= mesHasta`, no solo un mes puntual.
+
+**Rationale**: El hallazgo U1 del `/speckit.analyze` detectó que un único
+parámetro `mes` era ambiguo frente al edge case de "pago consolidado" y a
+los propios casos SC-001/SC-002, que requieren saldar 2 y 3 meses en una
+sola llamada. Nombrar el parámetro `mesHasta` (en vez de `mes`) hace
+explícita la semántica de rango y elimina la ambigüedad tanto en el DTO
+(`AporteMensualRequest`) como en el contrato HTTP.
+
+**Alternatives considered**: mantener `mes` como mes puntual y exigir N
+llamadas separadas (una por mes vencido) — descartado porque contradice
+directamente el edge case de spec.md ("...aunque el pago se reciba como un
+solo monto") y forzaría al Administrador a calcular manualmente cuántas
+llamadas hacer, reintroduciendo el problema original que motivó este feature.
+
+## 9. Alcance de FR-006 frente al módulo Caja (resuelve G1 CRITICAL)
+
+**Decision**: Aportes no implementa el módulo Caja. Persiste cada
+`MultaMora` de forma trazable y expone `AporteService.obtenerTotalMultasPeriodo(periodoId)`
+(que envuelve una consulta agregada de `MultaMoraRepository`) para que el
+futuro módulo Caja sume ese total a la caja del banco, y el módulo Cierre
+anual lo incluya en la ganancia distribuible (Principio XIII).
+
+**Rationale**: El hallazgo G1 detectó que FR-006 exigía una integración con
+"la caja del banco" que no tiene dueño en este feature ni en el repo aún.
+En vez de dejar el requisito sin cobertura (como estaba) o inventar un
+módulo Caja completo (fuera de alcance de Aportes), se redefine FR-006 como
+un contrato de datos: Aportes garantiza que el dato existe y es sumable;
+otro módulo hace la suma real. Esto es consistente con
+`docs/arquitectura-general.md` ("un módulo puede referenciar... pero no debe
+reimplementar la lógica de otro módulo").
+
+**Alternatives considered**: implementar ya una entidad `Caja` con saldo
+acumulado — descartado por invadir el alcance del módulo 6 de la
+constitución antes de que exista su propio spec/plan.
+
+## 10. Determinación del mes de ingreso (resuelve G2 HIGH)
+
+**Decision**: El mes de ingreso de un socio a un periodo se deriva de
+`AporteInicial.fecha` (US1) — no se añade un campo nuevo a `Socio` ni a
+`AporteMensual`. `resolverMesesHasta` nunca genera un mes anterior a
+`YearMonth.from(AporteInicial.fecha)`.
+
+**Rationale**: `AporteInicial` ya se registra exactamente una vez por
+socio+periodo al momento de su ingreso (US1); reutilizar su `fecha` evita
+duplicar el dato en otra entidad y mantiene la fuente de verdad en un solo
+lugar (no hay forma de que un socio tenga `AporteMensual` sin antes tener
+`AporteInicial`, por la relación de dependencia entre historias US1→US2).
+
+**Alternatives considered**: añadir `fechaIngreso` a la entidad `Socio` —
+descartado porque `Socio` es una entidad externa (propiedad del módulo
+Registro de socios) y modificarla violaría el límite de responsabilidad
+entre módulos de `docs/arquitectura-general.md`.
+
+## 11. Seguridad por rol en `AporteController` (resuelve C1 CRITICAL)
+
+**Decision**: Cada método de `AporteController` se anota con
+`@PreAuthorize("hasRole('ADMINISTRADOR')")`. Un test de integración
+`AporteControllerIT` verifica que un usuario con rol `SOCIO` recibe
+403/redirect en las 3 rutas, y que `ADMINISTRADOR` accede correctamente.
+
+**Rationale**: El hallazgo C1 detectó que, pese a que Spring Security era
+dependencia declarada (constitución §3) y `contracts/aportes-endpoints.md`
+ya documentaba "Rol requerido: ADMINISTRADOR" en cada ruta, ninguna tarea
+implementaba ni probaba esa restricción — Principio IX ("Seguridad no es
+opcional") no puede quedar como una nota de documentación sin verificación
+ejecutable.
+
+**Alternatives considered**: validar el rol manualmente dentro de
+`AporteService` — descartado porque el Service no debe conocer detalles de
+autenticación/HTTP (separación de capas); `@PreAuthorize` a nivel de
+Controller es el mecanismo estándar de Spring Security y el que asume
+`docs/arquitectura-general.md` §Seguridad.
+
 ## Resumen de resolución de NEEDS CLARIFICATION
 
-Ninguno — el Technical Context no contenía marcadores pendientes. Las 6
-decisiones anteriores son de diseño de dominio y de la capa Service, no de
-selección de stack ni de estructura de paquetes (ya fijada por
-`docs/arquitectura-general.md`).
+Ninguno en el Technical Context original. Las secciones 1–6 son decisiones
+de diseño de dominio iniciales; las secciones 7–11 documentan la
+remediación de los hallazgos CRITICAL/HIGH del primer `/speckit.analyze`
+(U1, U2, G1, G2, C1).
