@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -183,9 +184,16 @@ class AporteServiceTest {
         aporteService.registrarAporteMensual(SOCIO_ID, PERIODO_ID, febrero, new BigDecimal("105.00"),
                 LocalDate.of(2026, 2, 15));
 
+        // resolverMesesHasta crea y guarda cada mes (2 saves) y luego se
+        // vuelve a guardar cada uno al marcarlo PAGADO (2 saves mas) = 4.
+        // Como save() recibe la misma instancia mutada, las referencias
+        // capturadas (sin duplicados) reflejan el estado final.
         ArgumentCaptor<AporteMensual> captor = ArgumentCaptor.forClass(AporteMensual.class);
-        verify(aporteMensualRepository, times(2)).save(captor.capture());
-        assertThat(captor.getAllValues())
+        verify(aporteMensualRepository, atLeast(2)).save(captor.capture());
+        List<AporteMensual> distintos = captor.getAllValues().stream().distinct().toList();
+        assertThat(distintos).hasSize(2);
+        assertThat(distintos).extracting(AporteMensual::getMes).containsExactlyInAnyOrder(enero, febrero);
+        assertThat(distintos)
                 .allSatisfy(am -> assertEquals(EstadoAporteMensual.PAGADO, am.getEstado()));
     }
 
@@ -286,8 +294,6 @@ class AporteServiceTest {
                 .thenReturn(Optional.of(parametroOtroPeriodo));
         when(aporteMensualRepository.findBySocioIdAndPeriodoIdAndMes(eq(SOCIO_ID), eq(otroPeriodoId), any()))
                 .thenReturn(Optional.empty());
-        when(aporteMensualRepository.findBySocioIdAndPeriodoId(SOCIO_ID, otroPeriodoId))
-                .thenReturn(List.of());
 
         BigDecimal deudaPeriodo20 = aporteService.calcularDeudaAcumulada(SOCIO_ID, otroPeriodoId, mes);
 
@@ -306,8 +312,6 @@ class AporteServiceTest {
         AporteMensual eneroYaGenerado = new AporteMensual(SOCIO_ID, PERIODO_ID, enero, new BigDecimal("50.00"));
         when(aporteMensualRepository.findBySocioIdAndPeriodoIdAndMes(SOCIO_ID, PERIODO_ID, enero))
                 .thenReturn(Optional.of(eneroYaGenerado));
-        when(aporteMensualRepository.findBySocioIdAndPeriodoId(SOCIO_ID, PERIODO_ID))
-                .thenReturn(new ArrayList<>(List.of(eneroYaGenerado)));
 
         // El parametro "vigente ahora" ya cambio a 70/7, pero enero no debe
         // recalcularse con este valor.
