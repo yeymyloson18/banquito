@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: banquito
+  datasource:
+    url: jdbc:mysql://localhost:3306/banquito?useSSL=false&serverTimezone=America/Lima&allowPublicKeyRetrieval=true
+    username: banquito_app
+    password: Aportes2026Dev!
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+server:
+  port: 8080
