@@ -1,3 +1,4 @@
+C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\controller\AporteController.java
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\dto\AporteInicialRequest.java
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\dto\AporteMensualRequest.java
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\dto\DeudaAcumuladaDTO.java
@@ -20,3 +21,4 @@ C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\service\LineaD
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\service\PagoParcialNoPermitidoException.java
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\service\PeriodoCerradoException.java
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\BanquitoApplication.java
+C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\SecurityConfig.java

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Deuda acumulada</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container py-4" style="max-width: 560px;">
+    <h1 class="h4 mb-3">Deuda acumulada</h1>
+    <p class="text-muted">Socio <span th:text="${socioId}">1</span> — Periodo <span th:text="${periodoId}">1</span></p>
+
+    <div th:if="${mensaje}" class="alert alert-success" th:text="${mensaje}"></div>
+
+    <table class="table table-sm bg-white">
+        <thead>
+        <tr>
+            <th>Mes</th>
+            <th>Concepto</th>
+            <th class="text-end">Monto (S/)</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="linea : ${deuda.desglose()}">
+            <td th:text="${linea.mes()}">2026-01</td>
+            <td th:text="${linea.concepto()}">Aporte</td>
+            <td class="text-end" th:text="${linea.monto()}">0.00</td>
+        </tr>
+        <tr th:if="${#lists.isEmpty(deuda.desglose())}">
+            <td colspan="3" class="text-center text-muted">Sin deuda pendiente</td>
+        </tr>
+        </tbody>
+        <tfoot>
+        <tr>
+            <th colspan="2">Total</th>
+            <th class="text-end" th:text="${deuda.total()}">0.00</th>
+        </tr>
+        </tfoot>
+    </table>
+
+    <a class="btn btn-primary"
+       th:href="@{/socios/{socioId}/periodos/{periodoId}/aporte-mensual(socioId=${socioId},periodoId=${periodoId})}">
+        Registrar pago
+    </a>
+</div>
+</body>
+</html>

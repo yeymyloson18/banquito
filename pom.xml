@@ -77,6 +77,20 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- tasks.md/plan.md esperan que "mvnw test" cubra tanto
+                         *Test (unitarias) como *IT (integracion); no se usa
+                         un ciclo failsafe separado para mantener un unico
+                         comando de verificacion. -->
+                    <includes>
+                        <include>**/*Test.java</include>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 
