@@ -67,3 +67,12 @@ Consulta la deuda acumulada actual del socio (US3, FR-004, SC-004).
 - **Rol requerido**: ADMINISTRADOR
 - **Respuesta**: vista `aportes/deuda-socio.html` con el desglose: meses
   vencidos (con su `montoEsperado` histórico), multas por mes, y total exacto.
+- **Efecto lateral conocido** (decisión de diseño, no un bug): esta consulta
+  puede generar y persistir `AporteMensual`/`MultaMora` nuevos si aún no
+  existían para algún mes entre el ingreso del socio y el mes actual
+  (generación perezosa, ver `data-model.md` §Generación perezosa). Es
+  idempotente — llamadas repetidas no duplican filas — pero un `GET` que
+  escribe se aparta de la convención HTTP habitual. Se acepta así por
+  simplicidad (Principio IV): la alternativa (separar "resolver meses
+  pendientes" de "calcular total" en dos pasos) añadiría una llamada extra
+  sin beneficio funcional para este sistema de bajo volumen.

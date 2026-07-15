@@ -142,14 +142,30 @@ public class AporteService {
         List<MesResuelto> resultado = new ArrayList<>();
 
         for (YearMonth mes = mesIngreso; !mes.isAfter(mesHasta); mes = mes.plusMonths(1)) {
+            boolean vencido = mes.isBefore(mesHasta);
             Optional<AporteMensual> existente =
                     aporteMensualRepository.findBySocioIdAndPeriodoIdAndMes(socioId, periodoId, mes);
             if (existente.isPresent()) {
-                resultado.add(new MesResuelto(existente.get(), null));
+                AporteMensual aporteMensual = existente.get();
+                MultaMora multa = null;
+                if (vencido && aporteMensual.estaPendiente()) {
+                    // El mes ya existia (se genero en una llamada anterior,
+                    // cuando aun no estaba vencido) pero ahora es moroso: hay
+                    // que asegurar su multa, generandola si aun no existe
+                    // (FR-004, Principio XVI; ver /speckit.analyze, hallazgo B1).
+                    YearMonth mesVencido = mes;
+                    multa = multaMoraRepository.findByAporteMensual(aporteMensual)
+                            .orElseGet(() -> {
+                                ParametroPeriodo parametroVencido =
+                                        resolverParametroVigente(periodoId, mesVencido.atEndOfMonth());
+                                return multaMoraRepository.save(
+                                        new MultaMora(aporteMensual, parametroVencido.getMontoMulta(), mesVencido));
+                            });
+                }
+                resultado.add(new MesResuelto(aporteMensual, multa));
                 continue;
             }
 
-            boolean vencido = mes.isBefore(mesHasta);
             ParametroPeriodo parametro = resolverParametroVigente(periodoId, mes.atEndOfMonth());
             AporteMensual nuevo = aporteMensualRepository.save(
                     new AporteMensual(socioId, periodoId, mes, parametro.getMontoAporteMensual()));

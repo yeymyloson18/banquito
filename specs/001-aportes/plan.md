@@ -23,7 +23,7 @@ MVC por capas (`Controller → Service → Repository → Entity`) bajo el paque
 **Language/Version**: Java 21
 
 **Primary Dependencies**: Spring Boot 3 (Web, Data JPA, Security, Validation),
-Thymeleaf + Bootstrap 5
+Thymeleaf + Bootstrap 5, Flyway (core + mysql)
 
 **Storage**: MySQL 8, con Flyway como autoridad única del esquema
 

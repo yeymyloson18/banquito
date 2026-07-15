@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.lenient;
@@ -332,5 +333,38 @@ class AporteServiceTest {
         BigDecimal total = aporteService.obtenerTotalMultasPeriodo(PERIODO_ID);
 
         assertEquals(0, new BigDecimal("15.00").compareTo(total));
+    }
+
+    // ---- T048 (remediacion /speckit.analyze, hallazgo B1) ---------------
+    // Bug confirmado ejecutando el servicio real: un AporteMensual generado
+    // en una llamada anterior (cuando aun no estaba vencido) nunca recibia
+    // su multa al volverse moroso en una llamada posterior y separada.
+
+    @Test
+    void calcularDeudaAcumulada_mesPreexistenteSeVuelveVencido_generaMultaRetroactivamente() {
+        YearMonth enero = YearMonth.of(2026, 1);
+        YearMonth febrero = YearMonth.of(2026, 2);
+        YearMonth marzo = YearMonth.of(2026, 3);
+        mockIngreso(enero);
+        mockParametroVigente(new BigDecimal("50.00"), new BigDecimal("5.00"));
+
+        // Enero ya existe (PENDIENTE), generado en una llamada anterior sin
+        // multa porque en ese momento no estaba vencido.
+        AporteMensual eneroExistente = new AporteMensual(SOCIO_ID, PERIODO_ID, enero, new BigDecimal("50.00"));
+        when(aporteMensualRepository.findBySocioIdAndPeriodoIdAndMes(SOCIO_ID, PERIODO_ID, enero))
+                .thenReturn(Optional.of(eneroExistente));
+        when(aporteMensualRepository.findBySocioIdAndPeriodoIdAndMes(SOCIO_ID, PERIODO_ID, febrero))
+                .thenReturn(Optional.empty());
+        when(aporteMensualRepository.findBySocioIdAndPeriodoIdAndMes(SOCIO_ID, PERIODO_ID, marzo))
+                .thenReturn(Optional.empty());
+        when(multaMoraRepository.findByAporteMensual(eneroExistente)).thenReturn(Optional.empty());
+
+        BigDecimal deuda = aporteService.calcularDeudaAcumulada(SOCIO_ID, PERIODO_ID, marzo);
+
+        // Ene(50)+Feb(50)+Mar(50)+2 multas(5 c/u) = 160.00 (igual que T020,
+        // pero con enero generado en una llamada previa y separada).
+        assertEquals(0, new BigDecimal("160.00").compareTo(deuda));
+        verify(multaMoraRepository).save(argThat(m ->
+                m.getAporteMensual() == eneroExistente && enero.equals(m.getMesGenerada())));
     }
 }

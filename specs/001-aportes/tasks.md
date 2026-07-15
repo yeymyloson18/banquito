@@ -201,6 +201,20 @@ contra FR-004/SC-004 (no contra "RF-16").
 
 ---
 
+## Phase 10: Remediación post-implementación (`/speckit.analyze` sobre código real)
+
+**Contexto**: tras completar las Fases 1-9, un `/speckit.analyze` ejecutado
+contra el código real (no solo los documentos) encontró un bug CRITICAL
+verificado con evidencia (B1) y confirmó 2 hallazgos LOW ya conocidos (I2, L1).
+
+- [x] T048 Test (rojo→verde, resuelve B1/Principio XVI): `calcularDeudaAcumulada` no generaba la multa de un `AporteMensual` que ya existía (creado en una llamada anterior, aún no vencido) al volverse moroso en una llamada posterior y separada — confirmado con evidencia real (S/155 en vez de S/160). Corregido en `resolverMesesHasta` (rama `existente.isPresent()`) + nuevo método `MultaMoraRepository.findByAporteMensual` — `src/main/java/com/mibanquito/aportes/service/AporteService.java`, `src/main/java/com/mibanquito/aportes/repository/MultaMoraRepository.java`, `src/test/java/com/mibanquito/aportes/service/AporteServiceTest.java`
+- [x] T049 Documentar el efecto lateral conocido de `GET /deuda` (resuelve I2) — `specs/001-aportes/contracts/aportes-endpoints.md`
+- [x] T050 Añadir Flyway a "Primary Dependencies" del Technical Context (resuelve L1) — `specs/001-aportes/plan.md`
+
+**Checkpoint**: `mvnw clean test` → 19/19 pruebas pasan (13 unitarias + 6 integración).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
