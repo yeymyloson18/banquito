@@ -96,6 +96,25 @@ public class AporteService {
         return multaMoraRepository.sumMontoByPeriodoId(periodoId);
     }
 
+    /**
+     * Desglose de la deuda acumulada por concepto (FR-005), usado por el
+     * controller para construir DeudaAcumuladaDTO (GET /deuda, FR-004).
+     */
+    public List<LineaDeuda> obtenerDesgloseDeuda(Long socioId, Long periodoId, YearMonth mesHasta) {
+        List<LineaDeuda> lineas = new ArrayList<>();
+        for (MesResuelto mesResuelto : resolverMesesHasta(socioId, periodoId, mesHasta)) {
+            if (!mesResuelto.aporteMensual().estaPendiente()) {
+                continue;
+            }
+            YearMonth mes = mesResuelto.aporteMensual().getMes();
+            lineas.add(new LineaDeuda(mes, "Aporte " + mes, mesResuelto.aporteMensual().getMontoEsperado()));
+            if (mesResuelto.multaMora() != null) {
+                lineas.add(new LineaDeuda(mes, "Multa " + mes, mesResuelto.multaMora().getMonto()));
+            }
+        }
+        return lineas;
+    }
+
     // ---------------------------------------------------------------
 
     private BigDecimal sumarDeuda(List<MesResuelto> meses) {
