@@ -1,7 +1,11 @@
+com\mibanquito\aportes\repository\ParametroPeriodoRepository.class
 com\mibanquito\aportes\entity\AporteInicial.class
 com\mibanquito\aportes\entity\AporteMensual.class
+com\mibanquito\aportes\repository\AporteMensualRepository.class
 com\mibanquito\BanquitoApplication.class
 com\mibanquito\aportes\entity\MultaMora.class
+com\mibanquito\aportes\repository\AporteInicialRepository.class
 com\mibanquito\aportes\entity\ParametroPeriodo.class
+com\mibanquito\aportes\repository\MultaMoraRepository.class
 com\mibanquito\aportes\entity\EstadoAporteMensual.class
 com\mibanquito\aportes\entity\YearMonthDateConverter.class

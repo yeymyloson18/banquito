@@ -4,4 +4,8 @@ C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\entity\EstadoA
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\entity\MultaMora.java
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\entity\ParametroPeriodo.java
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\entity\YearMonthDateConverter.java
+C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\repository\AporteInicialRepository.java
+C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\repository\AporteMensualRepository.java
+C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\repository\MultaMoraRepository.java
+C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\aportes\repository\ParametroPeriodoRepository.java
 C:\Users\hp\Desktop\banquito\src\main\java\com\mibanquito\BanquitoApplication.java
